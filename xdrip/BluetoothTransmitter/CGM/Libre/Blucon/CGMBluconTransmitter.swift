@@ -223,29 +223,21 @@ class CGMBluconTransmitter: BluetoothTransmitter {
     
     private func blockNumberForNowGlucoseData(input:Data) -> String? {
         
-        // input should be minimum length 6
-        guard input.count >= 6 else {return nil}
+        var nowGlucoseIndex2 = (Int) (input[5] & 0x0F)
         
-        // input[5] * 6 + 4 - 6 should be uint
-        guard input[5] * 6 >= 2 else {
-            trace("in blockNumberForNowGlucoseData, input[5] * 6 < 2, this would result in a crash, returning nil", log: log, category: ConstantsLog.categoryBlucon, type: .info)
-            return nil
-        }
+        // calculate byte position in sensor body
+        nowGlucoseIndex2 = (nowGlucoseIndex2 * 6) + 4;
         
-        // caculate byte position in sensor body, decrement index to get the index where the last valid BG reading is stored
-        var nowGlucoseIndex2 = input[5] * 6 + 4 - 6
+        // decrement index to get the index where the last valid BG reading is stored
+        nowGlucoseIndex2 -= 6;
         
         // adjust round robin
-        if nowGlucoseIndex2 < 4 {
+        if (nowGlucoseIndex2 < 4) {
             nowGlucoseIndex2 = nowGlucoseIndex2 + 96
         }
-        
+
         // calculate the absolute block number which correspond to trend index
         let nowGlucoseIndex3 = 3 + (nowGlucoseIndex2/8)
-        
-        // calculate offset of the 2 bytes in the block
-        nowGlucoseOffset = nowGlucoseIndex2 % 8
-        
         
         let nowGlucoseDataAsHexString = nowGlucoseIndex3.description
 
