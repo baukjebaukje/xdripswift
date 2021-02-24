@@ -31,7 +31,7 @@ class CGMBluconTransmitter: BluetoothTransmitter {
     private let log = OSLog(subsystem: ConstantsLog.subSystem, category: ConstantsLog.categoryBlucon)
     
     /// timestamp of last received reading. When a new packet is received, then only the more recent readings will be treated
-    private var timeStampLastBgReading:Date
+    private var timeStampLastBgReading:Date?
     
     // waiting successful pairing yes or not
     private var waitingSuccessfulPairing:Bool = false
@@ -91,9 +91,6 @@ class CGMBluconTransmitter: BluetoothTransmitter {
             // address not nil, means it already connected before, use that address
             newAddressAndName = BluetoothTransmitter.DeviceAddressAndName.alreadyConnectedBefore(address: address, name: name)
         }
-        
-        // initialize timeStampLastBgReading
-        self.timeStampLastBgReading = Date(timeIntervalSince1970: 0)
         
         // initialize sensorSerialNumber
         self.sensorSerialNumber = sensorSerialNumber
@@ -183,17 +180,16 @@ class CGMBluconTransmitter: BluetoothTransmitter {
                 
             }
 
+           /* libreDataParser.libreDataProcessor(libreSensorSerialNumber: sensorSerialNumber, patchInfo: nil, webOOPEnabled: isWebOOPEnabled(), libreData: rxBuffer, cgmTransmitterDelegate: cgmTransmitterDelegate, dataIsDecryptedToLibre1Format: false, testTimeStamp: nil, completionHandler: {
+                
+            })*/
+            
             //get readings from buffer and send to cGMTransmitterDelegate
             // TODO: use libreDataParserlibreDataProcessor and make parseLibre1DataWithoutOOPWebCalibration private to LibreDataParser
             var result = libreDataParser.parseLibre1Data(libreData: rxBuffer, libre1DerivedAlgorithmParameters: nil, testTimeStamp: nil)
             
             //TODO: sort glucosedata before calling newReadingsReceived
             cgmTransmitterDelegate?.cgmTransmitterInfoReceived(glucoseData: &result.glucoseData, transmitterBatteryInfo: nil, sensorTimeInMinutes: result.sensorTimeInMinutes)
-            
-            //set timeStampLastBgReading to timestamp of latest reading in the response so that next time we parse only the more recent readings
-            if result.glucoseData.count > 0 {
-                timeStampLastBgReading = result.glucoseData[0].timeStamp
-            }
             
             //reset the buffer
             resetRxBuffer()
@@ -373,8 +369,6 @@ class CGMBluconTransmitter: BluetoothTransmitter {
                         
                         cGMBluconTransmitterDelegate?.received(serialNumber: sensorSerialNumber, from: self)
 
-                        // also reset timestamp last reading, to be sure that if new sensor is started, we get historic data
-                        timeStampLastBgReading = Date(timeIntervalSince1970: 0)
                         
                     }
                     
@@ -441,7 +435,7 @@ class CGMBluconTransmitter: BluetoothTransmitter {
                     }
                     
                     // if timeStampLastBgReading > 5 minutes ago, then we'll get historic data, otherwise just get the latest reading
-                    if abs(timeStampLastBgReading.timeIntervalSinceNow) > 5 * 60 + 10 {
+                    if let timeStampLastBgReading = timeStampLastBgReading,  abs(timeStampLastBgReading.timeIntervalSinceNow) > 5 * 60 + 10 {
                         
                         sendCommandToBlucon(opcode: BluconTransmitterOpCode.getHistoricDataAllBlocksCommand)
                         
@@ -509,25 +503,18 @@ class CGMBluconTransmitter: BluetoothTransmitter {
                             }
                         }
                         
-                        // checking now timestamp of last reading, if less than 30 seconds old, then reading will be ignored, seems a bit late to do that check, but after a few tests it seems to be the best to continue up to here to make sure the Blucon stays in a consistent state.
-                        if abs(timeStampLastBgReading.timeIntervalSinceNow) < 30 {
-                            trace("    last reading less than 30 seconds old, ignoring this one", log: log, category: ConstantsLog.categoryBlucon, type: .info)
-                        } else {
-                            
-                            trace("    creating glucoseValue", log: log, category: ConstantsLog.categoryBlucon, type: .info)
-                            
-                            // create glucose reading with timestamp now
-                            timeStampLastBgReading = Date()
-                            
-                            // get glucoseValue from value
-                            let glucoseValue = nowGetGlucoseValue(input: value)
-                            
-                            let glucoseData = GlucoseData(timeStamp: timeStampLastBgReading, glucoseLevelRaw: glucoseValue)
-                            var glucoseDataArray = [glucoseData]
-                            cgmTransmitterDelegate?.cgmTransmitterInfoReceived(glucoseData: &glucoseDataArray, transmitterBatteryInfo: nil,  sensorTimeInMinutes: nil)
-                            
-                        }
+                        trace("    creating glucoseValue", log: log, category: ConstantsLog.categoryBlucon, type: .info)
                         
+                        // create glucose reading with timestamp now
+                        timeStampLastBgReading = Date()
+                        
+                        // get glucoseValue from value
+                        let glucoseValue = nowGetGlucoseValue(input: value)
+                        
+                        let glucoseData = GlucoseData(timeStamp: Date(), glucoseLevelRaw: glucoseValue)
+                        var glucoseDataArray = [glucoseData]
+                        cgmTransmitterDelegate?.cgmTransmitterInfoReceived(glucoseData: &glucoseDataArray, transmitterBatteryInfo: nil,  sensorTimeInMinutes: nil)
+
                         sendCommandToBlucon(opcode: .sleep)
                         
                     }
